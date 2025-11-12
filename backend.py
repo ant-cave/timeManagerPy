@@ -1,0 +1,160 @@
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+import uvicorn
+
+import time
+
+import tmlib
+
+from typing import Optional
+
+import threading
+
+import logging as lg
+
+import os
+import datetime as dt
+
+from dataclasses import dataclass, asdict
+
+
+
+
+class timeManagerBackend():
+    def __init__(self,logger:lg.Logger=None):
+
+        self.logger=logger
+
+        if not self.logger:
+            self.logger_init()
+        self.app = FastAPI()
+        # 添加CORS中间件以允许跨域请求
+        self.app.add_middleware(
+            CORSMiddleware,
+            allow_origins=["*"],
+            allow_credentials=True,
+            allow_methods=["*"],
+            allow_headers=["*"],
+        )
+
+        self.logger.info("backend initializing...")
+        self.__setup_routes()
+        self.stop = False
+
+        self.main_data = {}
+        self.main_record = {}
+
+        self.main_loop_thread = threading.Thread(target=self.main_loop,daemon=True)
+        self.backend_thread=threading.Thread(target=self.run_backend,daemon=True)
+        
+
+    def logger_init(self):
+        """
+        初始化日志系统
+        
+        创建日志目录，配置日志格式和输出方式，
+        包括文件输出和控制台输出
+        """
+        self.logger = lg.getLogger(__name__)
+        try:  # 创建日志目录
+            os.makedirs("./log")
+        except:
+            pass
+        
+        # 清除已存在的处理器，避免重复日志
+        for handler in self.logger.handlers[:]:
+            self.logger.removeHandler(handler)
+        
+        # 日志基础设置
+        lg.basicConfig(
+            filename="./log/" + str(dt.datetime.today().strftime("%Y-%m-%d")) + ".log",
+            format="[%(asctime)s][%(levelname)s][%(name)s][%(funcName)s]%(message)s",
+            level=lg.INFO,
+            encoding="utf-8",
+        )
+        
+        # 添加控制台输出
+        console_handler = lg.StreamHandler()
+        console_handler.setLevel(lg.INFO)
+        formatter = lg.Formatter("[%(asctime)s][%(levelname)s][%(name)s][%(funcName)s]%(message)s")
+        console_handler.setFormatter(formatter)
+        self.logger.addHandler(console_handler)
+        
+        self.logger.info("Started")
+    def __setup_routes(self):
+        # 路由
+        @self.app.get("/")
+        def home():
+            return self.get_main_data_dict()
+
+        @self.app.get("/items/{item_id}")
+        def items(item_id: int, q: str = None):
+            return {"item_id": item_id, "q": q}
+
+    def get_main_data_dict(self):
+        """
+        将 main_data 转为可 JSON 序列化的 dict
+        key: exe_path (str)
+        value: TimeStatus 实例 → 转成字典
+        """
+        result = {}
+        for key in self.main_data:
+            result.update({key: {
+                'totalTime': self.main_data[key].total_time,
+                'lastTime': self.main_data[key].last_time
+            }})
+
+        return result
+
+    def run_backend(self):
+        uvicorn.run(self.app, host="127.0.0.1", port=25673)
+
+    def start(self):
+        self.main_loop_thread.start()
+        self.logger.info("已启动 计时")
+
+        self.backend_thread.start()
+
+        self.logger.info("已启动 后端")
+
+
+
+
+
+    def main_loop(self):
+        """
+        主循环函数，用于监控当前活动窗口并记录各程序的运行时间
+        
+        该函数会持续运行直到self.stop被设置为True。它通过定期检查前台窗口的可执行文件路径，
+        并累加对应程序的时间计数来实现时间跟踪功能。时间统计精度为0.1秒。
+        """
+        current_data = None
+
+        while True:
+            # 检查是否需要停止主循环
+            if self.stop:
+                break
+
+            # 每0.1秒检查一次前台窗口
+            time.sleep(0.1)
+            info_data = tmlib.get_foreground_window_executable_info()
+            if info_data:
+                current_exe_path = info_data.exe_path
+
+                # 尝试获取当前可执行文件路径对应的时间统计数据
+                if current_exe_path not in self.main_data:
+                    # 如果当前路径未在main_data中记录，则初始化记录
+                    self.main_data[current_exe_path] = tmlib.TimeStatus()
+                
+                current_data = self.main_data[current_exe_path]
+                current_data:  tmlib.TimeStatus
+
+                # 累加当前程序的使用时间计数
+                if current_data.last_time - int(current_data.last_time) < 0.1:
+                    current_data.total_time += 1
+                current_data.last_time = time.time()
+
+
+if __name__ == "__main__":
+    backend = timeManagerBackend()
+    backend.start()

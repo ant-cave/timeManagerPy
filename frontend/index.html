@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>程序时间监控</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            text-align: center;
+            color: #333;
+        }
+        .program-list {
+            list-style: none;
+            padding: 0;
+        }
+        .program-item {
+            padding: 10px;
+            margin: 5px 0;
+            background-color: #f9f9f9;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        .exe-path {
+            font-weight: bold;
+            color: #444;
+        }
+        .time-info {
+            margin-top: 5px;
+            color: #666;
+        }
+        .loading {
+            text-align: center;
+            color: #888;
+            font-style: italic;
+        }
+        .error {
+            color: red;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>程序时间监控</h1>
+        <div id="status">加载中...</div>
+        <ul id="programList" class="program-list"></ul>
+    </div>
+
+    <script>
+        const programList = document.getElementById('programList');
+        const statusDiv = document.getElementById('status');
+
+        function formatTime(seconds) {
+            const totalSeconds = Math.floor(seconds);
+            const hours = Math.floor(totalSeconds / 3600);
+            const minutes = Math.floor((totalSeconds % 3600) / 60);
+            const secs = totalSeconds % 60;
+            return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+        }
+
+        async function fetchProgramData() {
+            try {
+                const response = await fetch('http://127.0.0.1:25673/', {
+                    method: 'GET',
+                    headers: {
+                        'Accept': 'application/json',
+                    },
+                    mode: 'cors' // 添加CORS模式
+                });
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                const data = await response.json();
+                updateDisplay(data);
+                statusDiv.textContent = '数据更新中...';
+                statusDiv.className = 'loading';
+            } catch (error) {
+                console.error('获取数据失败:', error);
+                statusDiv.textContent = '获取数据失败，请检查后端服务是否运行在 http://127.0.0.1:25673/';
+                statusDiv.className = 'error';
+            }
+        }
+
+        function updateDisplay(data) {
+            programList.innerHTML = '';
+            if (Object.keys(data).length === 0) {
+                const li = document.createElement('li');
+                li.className = 'program-item';
+                li.textContent = '暂无数据';
+                programList.appendChild(li);
+                return;
+            }
+
+            for (const [exePath, info] of Object.entries(data)) {
+                const li = document.createElement('li');
+                li.className = 'program-item';
+
+                const exeElement = document.createElement('div');
+                exeElement.className = 'exe-path';
+                exeElement.textContent = exePath;
+
+                const timeElement = document.createElement('div');
+                timeElement.className = 'time-info';
+                timeElement.innerHTML = `
+                    总时间: ${formatTime(info.totalTime)}<br>
+                    最后更新: ${new Date(info.lastTime * 1000).toLocaleString()}
+                `;
+
+                li.appendChild(exeElement);
+                li.appendChild(timeElement);
+                programList.appendChild(li);
+            }
+        }
+
+        // 初始加载
+        fetchProgramData();
+
+        // 每2秒更新一次
+        setInterval(fetchProgramData, 100);
+    </script>
+</body>
+</html>
