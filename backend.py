@@ -1,3 +1,4 @@
+import json
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
@@ -21,9 +22,13 @@ from dataclasses import dataclass, asdict
 
 
 class timeManagerBackend():
-    def __init__(self,logger:lg.Logger=None):
+    def __init__(self,logger:lg.Logger=None,auto_save=False,auto_save_query=0,data_path='./data'):
+
+        self.auto_save_query=auto_save_query
 
         self.logger=logger
+        self.data_path=data_path
+        self.auto_save=auto_save
 
         if not self.logger:
             self.logger_init()
@@ -46,6 +51,7 @@ class timeManagerBackend():
 
         self.main_loop_thread = threading.Thread(target=self.main_loop,daemon=True)
         self.backend_thread=threading.Thread(target=self.run_backend,daemon=True)
+        self.auto_save_thread=threading.Thread(target=self.auto_save_,daemon=True)
         
 
     def logger_init(self):
@@ -111,6 +117,9 @@ class timeManagerBackend():
 
     def start(self):
         self.main_loop_thread.start()
+        if self.auto_save_query:
+            self.auto_save_thread.start()
+
         self.logger.info("已启动 计时")
 
         self.backend_thread.start()
@@ -119,7 +128,9 @@ class timeManagerBackend():
 
 
 
+    def stop_(self):
 
+        self.stop = True
 
     def main_loop(self):
         """
@@ -153,6 +164,15 @@ class timeManagerBackend():
                 if current_data.last_time - int(current_data.last_time) < 0.1:
                     current_data.total_time += 1
                 current_data.last_time = time.time()
+
+    def auto_save_(self):
+        while 1:
+            time.sleep(self.auto_save_query)
+            if self.stop:
+                break
+            with open(self.data_path+'/'+ str(dt.datetime.today().strftime("%Y-%m-%d")) + ".json",'w+',encoding='utf-8') as f:
+                f.write(json.dumps(self.get_main_data_dict(),indent=4,ensure_ascii=False))
+            self.logger.info('saved data automatically.')
 
 
 if __name__ == "__main__":

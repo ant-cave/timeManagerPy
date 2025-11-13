@@ -112,6 +112,7 @@ class WebViewApp(object):
         self.icon.stop()
         self.httpd.server_close()
         self.logger.info("已退出")
+        self.backend.stop_()
         os._exit(0)
 
 
@@ -153,7 +154,7 @@ class WebViewApp(object):
             return False
         
         self.logger.info("初始化成功")
-        self.backend=timeManagerBackend(self.logger)
+        self.backend=timeManagerBackend(self.logger,True,10)
         self.logger.info("启动后端服务")
         
         #图标线程
