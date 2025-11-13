@@ -1,0 +1,5 @@
+webview-py
+pystray
+Pillow
+fastapi
+uvicorn

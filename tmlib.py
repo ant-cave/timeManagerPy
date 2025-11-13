@@ -72,17 +72,6 @@ class ExecutableInfo(WindowInfo):
     exe_path: str
     directory: str
 
-@dataclass
-class TimeStatus():
-    """
-    时间状态数据类
-    
-    Attributes:
-        time_status: 时间状态
-        time_status_detail: 时间状态详情
-    """
-    total_time:int=0
-    last_time:float=0
 
 
 # --- 3. 主函数 ---

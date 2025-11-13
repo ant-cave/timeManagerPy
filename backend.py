@@ -7,7 +7,6 @@ import time
 
 import tmlib
 
-from typing import Optional
 
 import threading
 
@@ -16,7 +15,6 @@ import logging as lg
 import os
 import datetime as dt
 
-from dataclasses import dataclass, asdict
 
 
 
@@ -46,8 +44,31 @@ class timeManagerBackend():
         self.__setup_routes()
         self.stop = False
 
-        self.main_data = {}
-        self.main_record = {}
+
+        if os.path.exists(self.data_path+'/'+ str(dt.datetime.today().strftime("%Y-%m-%d")) + ".json"):
+            with open(self.data_path+'/'+ str(dt.datetime.today().strftime("%Y-%m-%d")) + ".json",'r',encoding='utf-8') as f:
+                file_str=f.read()
+            try:
+                loaded_data = json.loads(file_str)
+                # 转换旧数据格式到新格式
+                self.main_data = {}
+                for key, value in loaded_data.items():
+                    if 'totalTime' in value and 'lastTime' in value:
+                        # 已经是新格式，直接使用
+                        self.main_data[key] = value
+                    elif 'total_time' in value and 'last_time' in value:
+                        # 旧格式，转换为新格式
+                        self.main_data[key] = {
+                            'totalTime': value['total_time'],
+                            'lastTime': value['last_time']
+                        }
+                    else:
+                        # 未知格式，使用默认值
+                        self.main_data[key] = {'totalTime': 0, 'lastTime': 0.0}
+            except:
+                self.main_data = {}
+        else:
+            self.main_data = {}
 
         self.main_loop_thread = threading.Thread(target=self.main_loop,daemon=True)
         self.backend_thread=threading.Thread(target=self.run_backend,daemon=True)
@@ -91,26 +112,11 @@ class timeManagerBackend():
         # 路由
         @self.app.get("/")
         def home():
-            return self.get_main_data_dict()
+            return self.main_data
 
         @self.app.get("/items/{item_id}")
         def items(item_id: int, q: str = None):
             return {"item_id": item_id, "q": q}
-
-    def get_main_data_dict(self):
-        """
-        将 main_data 转为可 JSON 序列化的 dict
-        key: exe_path (str)
-        value: TimeStatus 实例 → 转成字典
-        """
-        result = {}
-        for key in self.main_data:
-            result.update({key: {
-                'totalTime': self.main_data[key].total_time,
-                'lastTime': self.main_data[key].last_time
-            }})
-
-        return result
 
     def run_backend(self):
         uvicorn.run(self.app, host="127.0.0.1", port=25673)
@@ -155,15 +161,14 @@ class timeManagerBackend():
                 # 尝试获取当前可执行文件路径对应的时间统计数据
                 if current_exe_path not in self.main_data:
                     # 如果当前路径未在main_data中记录，则初始化记录
-                    self.main_data[current_exe_path] = tmlib.TimeStatus()
+                    self.main_data[current_exe_path] = {'totalTime': 0, 'lastTime': 0.0}
                 
                 current_data = self.main_data[current_exe_path]
-                current_data:  tmlib.TimeStatus
 
                 # 累加当前程序的使用时间计数
-                if current_data.last_time - int(current_data.last_time) < 0.1:
-                    current_data.total_time += 1
-                current_data.last_time = time.time()
+                if 0<current_data['lastTime'] - int(current_data['lastTime']) < 0.1:
+                    current_data['totalTime'] += 1
+                current_data['lastTime'] = time.time()
 
     def auto_save_(self):
         while 1:
@@ -171,7 +176,7 @@ class timeManagerBackend():
             if self.stop:
                 break
             with open(self.data_path+'/'+ str(dt.datetime.today().strftime("%Y-%m-%d")) + ".json",'w+',encoding='utf-8') as f:
-                f.write(json.dumps(self.get_main_data_dict(),indent=4,ensure_ascii=False))
+                f.write(json.dumps(self.main_data,indent=4,ensure_ascii=False))
             self.logger.info('saved data automatically.')
 
 

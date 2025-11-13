@@ -3,6 +3,7 @@ import pystray
 from PIL import Image
 import threading
 import os
+import json
 import http.server
 import socketserver
 from functools import partial
@@ -17,6 +18,11 @@ class WebViewApp(object):
     def __init__(self,iconPath):
         #initialize
         
+        if os.path.exists('./config.json'):
+            try:
+                self.config=json.load(open('./config.json'))
+            except json.JSONDecodeError:
+                self.config={}
         self.window=None
         self.icon_path=iconPath
         self.logger_init()
@@ -154,7 +160,7 @@ class WebViewApp(object):
             return False
         
         self.logger.info("初始化成功")
-        self.backend=timeManagerBackend(self.logger,True,10)
+        self.backend=timeManagerBackend(self.logger,True,self.config['auto_save_query'],self.config['data_path'])
         self.logger.info("启动后端服务")
         
         #图标线程
