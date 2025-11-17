@@ -1,4 +1,4 @@
-webview-py
+pywebview
 pystray
 Pillow
 fastapi
