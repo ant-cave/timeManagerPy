@@ -72,6 +72,10 @@ class ExecutableInfo(WindowInfo):
     exe_path: str
     directory: str
 
+def initialize_folders(folder_names: list[str]):
+    for folder_name in folder_names:
+        if not os.path.exists(folder_name):
+            os.makedirs(folder_name)
 
 
 # --- 3. 主函数 ---

@@ -22,6 +22,8 @@ import datetime as dt
 class timeManagerBackend():
     def __init__(self,logger:lg.Logger=None,auto_save=False,auto_save_query=0,data_path='./data'):
 
+
+
         self.auto_save_query=auto_save_query
 
         self.logger=logger
@@ -114,9 +116,32 @@ class timeManagerBackend():
         def home():
             return self.main_data
 
-        @self.app.get("/items/{item_id}")
-        def items(item_id: int, q: str = None):
-            return {"item_id": item_id, "q": q}
+        @self.app.get("/get_week_data")
+        def get_week_data():
+            """获取过去7天（包括今天）的所有数据"""
+            result = {}
+            today = dt.datetime.today().date()
+            
+            # 计算过去7天的日期
+            for i in range(7):
+                date = today - dt.timedelta(days=i)
+                date_str = date.strftime("%Y-%m-%d")
+                date_int = int(date.strftime("%Y%m%d"))
+                
+                # 检查数据文件是否存在
+                filename = f"{self.data_path}/{date_str}.json"
+                if os.path.exists(filename):
+                    try:
+                        with open(filename, 'r', encoding='utf-8') as f:
+                            data = json.loads(f.read())
+                        result[date_int] = data
+                    except Exception as e:
+                        self.logger.error(f"读取文件 {filename} 时出错: {e}")
+                        result[date_int] = {}
+                else:
+                    result[date_int] = {}
+            
+            return result
 
     def run_backend(self):
         uvicorn.run(self.app, host="127.0.0.1", port=25673)
@@ -146,6 +171,8 @@ class timeManagerBackend():
         并累加对应程序的时间计数来实现时间跟踪功能。时间统计精度为0.1秒。
         """
         current_data = None
+        last_check_time = time.time()
+        current_date = dt.datetime.today().date()
 
         while True:
             # 检查是否需要停止主循环
@@ -154,6 +181,26 @@ class timeManagerBackend():
 
             # 每0.1秒检查一次前台窗口
             time.sleep(0.1)
+            current_time = time.time()
+            today = dt.datetime.today().date()
+            
+            # 检测日期变化
+            if today != current_date:
+                self._save_current_data(current_date)
+                self._switch_to_new_date(today)
+                current_date = today
+            
+            # 检测时间跳跃（睡眠/休眠导致）
+            time_diff = current_time - last_check_time
+            if time_diff > 1.0:
+                # 时间跳跃，不累加时间，只更新lastTime
+                if current_data:
+                    current_data['lastTime'] = current_time
+                last_check_time = current_time
+                continue
+                
+            last_check_time = current_time
+            
             info_data = tmlib.get_foreground_window_executable_info()
             if info_data:
                 current_exe_path = info_data.exe_path
@@ -168,7 +215,44 @@ class timeManagerBackend():
                 # 累加当前程序的使用时间计数
                 if 0<current_data['lastTime'] - int(current_data['lastTime']) < 0.1:
                     current_data['totalTime'] += 1
-                current_data['lastTime'] = time.time()
+                current_data['lastTime'] = current_time
+
+    def _save_current_data(self, date):
+        """保存指定日期的数据"""
+        if self.main_data:
+            filename = f"{self.data_path}/{date.strftime('%Y-%m-%d')}.json"
+            with open(filename, 'w', encoding='utf-8') as f:
+                f.write(json.dumps(self.main_data, indent=4, ensure_ascii=False))
+            self.logger.info(f'跨天切换：已保存 {date.strftime("%Y-%m-%d")} 的数据')
+
+    def _switch_to_new_date(self, new_date):
+        """切换到新日期的数据文件"""
+        filename = f"{self.data_path}/{new_date.strftime('%Y-%m-%d')}.json"
+        
+        # 加载新日期的数据（如果存在）
+        if os.path.exists(filename):
+            with open(filename, 'r', encoding='utf-8') as f:
+                file_str = f.read()
+            try:
+                loaded_data = json.loads(file_str)
+                # 使用与 __init__ 中相同的数据格式转换逻辑
+                self.main_data = {}
+                for key, value in loaded_data.items():
+                    if 'totalTime' in value and 'lastTime' in value:
+                        self.main_data[key] = value
+                    elif 'total_time' in value and 'last_time' in value:
+                        self.main_data[key] = {
+                            'totalTime': value['total_time'],
+                            'lastTime': value['last_time']
+                        }
+                    else:
+                        self.main_data[key] = {'totalTime': 0, 'lastTime': 0.0}
+            except:
+                self.main_data = {}
+        else:
+            self.main_data = {}
+        
+        self.logger.info(f'跨天切换：已切换到 {new_date.strftime("%Y-%m-%d")} 的数据')
 
     def auto_save_(self):
         while 1:

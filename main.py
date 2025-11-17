@@ -8,6 +8,7 @@ import http.server
 import socketserver
 from functools import partial
 import logging as lg
+import tmlib
 import datetime as dt
 
 from backend import timeManagerBackend
@@ -23,6 +24,9 @@ class WebViewApp(object):
                 self.config=json.load(open('./config.json'))
             except json.JSONDecodeError:
                 self.config={}
+        tmlib.initialize_folders(['data',
+                                  'log'])
+
         self.window=None
         self.icon_path=iconPath
         self.logger_init()
