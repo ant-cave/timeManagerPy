@@ -3,3 +3,4 @@ pystray
 Pillow
 fastapi
 uvicorn
+pywin32

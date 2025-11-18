@@ -2,6 +2,7 @@ import ctypes
 import time
 from ctypes import wintypes
 import os
+import shutil
 from typing import Optional, Dict, Any
 from dataclasses import dataclass
 
@@ -181,3 +182,129 @@ def get_foreground_window_executable_info() -> Optional[ExecutableInfo]:
         exe_path=exe_path,
         directory=directory
     )
+
+
+def extract_icon_from_exe(exe_path: str, output_path: str) -> bool:
+    """
+    从可执行文件中提取图标并保存为ICO文件
+    
+    Args:
+        exe_path: 可执行文件路径
+        output_path: 输出ICO文件路径
+        
+    Returns:
+        bool: 是否成功提取图标
+    """
+    try:
+        # 使用Windows API提取图标
+        import win32ui
+        import win32con
+        import win32gui
+        import win32api
+        
+        # 获取可执行文件中的第一个图标
+        large, small = win32gui.ExtractIconEx(exe_path, 0)
+        if large:
+            # 使用大图标
+            hicon = large[0]
+            # 获取图标信息
+            icon_info = win32gui.GetIconInfo(hicon)
+            
+            # 创建位图
+            hdc = win32ui.CreateDCFromHandle(win32gui.GetDC(0))
+            hbmp = win32ui.CreateBitmap()
+            hbmp.CreateCompatibleBitmap(hdc, 32, 32)
+            hdc = hdc.CreateCompatibleDC()
+            
+            # 选择位图到设备上下文
+            hdc.SelectObject(hbmp)
+            
+            # 绘制图标
+            win32gui.DrawIconEx(hdc.GetHandleOutput(), 0, 0, hicon, 32, 32, 0, 0, win32con.DI_NORMAL)
+            
+            # 保存为ICO文件
+            hbmp.SaveBitmapFile(hdc, output_path)
+            
+            # 清理资源
+            win32gui.DestroyIcon(hicon)
+            return True
+            
+        elif small:
+            # 使用小图标
+            hicon = small[0]
+            # 获取图标信息
+            icon_info = win32gui.GetIconInfo(hicon)
+            
+            # 创建位图
+            hdc = win32ui.CreateDCFromHandle(win32gui.GetDC(0))
+            hbmp = win32ui.CreateBitmap()
+            hbmp.CreateCompatibleBitmap(hdc, 16, 16)
+            hdc = hdc.CreateCompatibleDC()
+            
+            # 选择位图到设备上下文
+            hdc.SelectObject(hbmp)
+            
+            # 绘制图标
+            win32gui.DrawIconEx(hdc.GetHandleOutput(), 0, 0, hicon, 16, 16, 0, 0, win32con.DI_NORMAL)
+            
+            # 保存为ICO文件
+            hbmp.SaveBitmapFile(hdc, output_path)
+            
+            # 清理资源
+            win32gui.DestroyIcon(hicon)
+            return True
+        else:
+            return False
+            
+    except Exception as e:
+        # 如果pywin32不可用，尝试使用简单的文件复制作为备用方案
+        try:
+            # 检查文件是否存在
+            if os.path.exists(exe_path):
+                # 尝试复制可执行文件本身作为图标（简单方案）
+                shutil.copy2(exe_path, output_path)
+                return True
+        except:
+            pass
+        return False
+
+
+def get_app_icon_path(exe_path: str, icon_dir: str = "./data/icon") -> str:
+    """
+    获取应用的图标路径，如果不存在则提取图标
+    
+    Args:
+        exe_path: 可执行文件路径
+        icon_dir: 图标存储目录
+        
+    Returns:
+        str: 图标文件的相对路径
+    """
+    # 创建图标目录
+    if not os.path.exists(icon_dir):
+        os.makedirs(icon_dir)
+    
+    # 生成唯一的图标文件名（基于exe路径的哈希）
+    import hashlib
+    exe_hash = hashlib.md5(exe_path.encode('utf-8')).hexdigest()
+    icon_filename = f"{exe_hash}.ico"
+    icon_path = os.path.join(icon_dir, icon_filename)
+    
+    # 如果图标文件不存在，尝试提取
+    if not os.path.exists(icon_path):
+        success = extract_icon_from_exe(exe_path, icon_path)
+        if not success:
+            # 如果提取失败，使用默认图标
+            default_icon = os.path.join(icon_dir, "default.ico")
+            if not os.path.exists(default_icon):
+                # 创建默认图标（简单的蓝色方块）
+                try:
+                    from PIL import Image
+                    img = Image.new('RGB', (32, 32), color='blue')
+                    img.save(default_icon, format='ICO')
+                except:
+                    pass
+            icon_path = default_icon
+    
+    # 返回相对路径
+    return os.path.relpath(icon_path, ".")

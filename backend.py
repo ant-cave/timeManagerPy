@@ -1,6 +1,7 @@
 import json
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 import uvicorn
 
 import time
@@ -143,6 +144,20 @@ class timeManagerBackend():
             
             return result
 
+        @self.app.get("/icon/{icon_hash}")
+        def get_icon(icon_hash: str):
+            """获取应用图标"""
+            icon_path = f"./data/icon/{icon_hash}.ico"
+            if os.path.exists(icon_path):
+                return FileResponse(icon_path, media_type="image/x-icon")
+            else:
+                # 返回默认图标
+                default_icon = "./data/icon/default.ico"
+                if os.path.exists(default_icon):
+                    return FileResponse(default_icon, media_type="image/x-icon")
+                else:
+                    raise HTTPException(status_code=404, detail="Icon not found")
+
     def run_backend(self):
         uvicorn.run(self.app, host="127.0.0.1", port=25673)
 
@@ -209,6 +224,19 @@ class timeManagerBackend():
                 if current_exe_path not in self.main_data:
                     # 如果当前路径未在main_data中记录，则初始化记录
                     self.main_data[current_exe_path] = {'totalTime': 0, 'lastTime': 0.0}
+                    
+                    # 发现新应用，获取图标并添加图标路径到数据中
+                    try:
+                        import hashlib
+                        exe_hash = hashlib.md5(current_exe_path.encode('utf-8')).hexdigest()
+                        icon_path = tmlib.get_app_icon_path(current_exe_path, "./data/icon")
+                        icon_api_path = f"/icon/{exe_hash}"
+                        
+                        # 添加图标路径到应用数据中
+                        self.main_data[current_exe_path]['iconPath'] = icon_api_path
+                        self.logger.info(f"发现新应用: {current_exe_path}, 图标路径: {icon_api_path}")
+                    except Exception as e:
+                        self.logger.error(f"获取应用图标失败: {e}")
                 
                 current_data = self.main_data[current_exe_path]
 
@@ -267,3 +295,4 @@ class timeManagerBackend():
 if __name__ == "__main__":
     backend = timeManagerBackend()
     backend.start()
+    backend.backend_thread.join()
